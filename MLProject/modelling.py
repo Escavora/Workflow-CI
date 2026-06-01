@@ -111,4 +111,4 @@ with mlflow.start_run(run_id=MLFLOW_RUN_ID) as run:
     print(f"Accuracy : {accuracy_score(y_test, y_pred):.4f}")
     print(f"F1 Score : {f1_score(y_test, y_pred, zero_division=0):.4f}")
     print(f"ROC-AUC  : {roc_auc_score(y_test, y_prob):.4f}")
-    print("\nSemua metrics dan artefak berhasil di-log.")
+    print("\nSemua metiks dan artefak berhasil di-log.")
