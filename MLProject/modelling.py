@@ -21,7 +21,6 @@ parser.add_argument('--max_depth',         type=int, default=5)
 parser.add_argument('--min_samples_split', type=int, default=2)
 args = parser.parse_args()
 
-# Setup tracking — pakai DagsHub kalau token tersedia, lokal kalau tidak
 DAGSHUB_TOKEN = os.getenv('DAGSHUB_TOKEN')
 if DAGSHUB_TOKEN:
     dagshub.init(repo_owner='Escavora',
@@ -29,8 +28,9 @@ if DAGSHUB_TOKEN:
                  mlflow=True)
     print("Tracking: DagsHub")
 else:
-    mlflow.set_tracking_uri("mlruns")
-    print("Tracking: lokal (mlruns/)")
+    # Pakai SQLite supaya kompatibel dengan MLflow versi baru
+    mlflow.set_tracking_uri("sqlite:///mlflow.db")
+    print("Tracking: SQLite lokal (mlflow.db)")
 
 # Load dataset
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))

@@ -26,6 +26,9 @@ jobs:
         run: pip install mlflow dagshub pandas numpy scikit-learn matplotlib joblib
 
       - name: Run MLflow Project
+        env:
+          MLFLOW_BACKEND_STORE_URI: sqlite:///mlflow.db
+          MLFLOW_ALLOW_FILE_STORE: "true"
         run: mlflow run MLProject/ --env-manager=local
 
       - name: Get Run ID
@@ -36,7 +39,7 @@ jobs:
         with:
           name: trained-model
           path: |
-            mlruns/
+            mlflow.db
             MLProject/run_id.txt
             MLProject/confusion_matrix.png
             MLProject/feature_importance.png
@@ -51,6 +54,8 @@ jobs:
           password: ${{ secrets.DOCKER_HUB_TOKEN }}
 
       - name: Build Docker image (mlflow build-docker)
+        env:
+          MLFLOW_BACKEND_STORE_URI: sqlite:///mlflow.db
         run: |
           mlflow models build-docker \
             --model-uri "runs:/${{ env.RUN_ID }}/model" \
