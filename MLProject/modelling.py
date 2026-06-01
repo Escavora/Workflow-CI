@@ -21,14 +21,20 @@ parser.add_argument('--max_depth',         type=int, default=5)
 parser.add_argument('--min_samples_split', type=int, default=2)
 args = parser.parse_args()
 
+# Setup tracking
 DAGSHUB_TOKEN = os.getenv('DAGSHUB_TOKEN')
+MLFLOW_RUN_ID = os.getenv('MLFLOW_RUN_ID')  # otomatis di-set oleh mlflow run
+
 if DAGSHUB_TOKEN:
     dagshub.init(repo_owner='Escavora',
                  repo_name='Eksperimen_SML_Alief_Athallah',
                  mlflow=True)
     print("Tracking: DagsHub")
+elif MLFLOW_RUN_ID:
+    # Dijalankan via mlflow run — tracking URI sudah diset otomatis, jangan di-override
+    print(f"Tracking: {mlflow.get_tracking_uri()}")
 else:
-    # Pakai SQLite supaya kompatibel dengan MLflow versi baru
+    # Dijalankan standalone di lokal
     mlflow.set_tracking_uri("sqlite:///mlflow.db")
     print("Tracking: SQLite lokal (mlflow.db)")
 
