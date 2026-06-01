@@ -23,20 +23,19 @@ args = parser.parse_args()
 
 # Setup tracking
 DAGSHUB_TOKEN = os.getenv('DAGSHUB_TOKEN')
-MLFLOW_RUN_ID = os.getenv('MLFLOW_RUN_ID')  # otomatis di-set oleh mlflow run
+MLFLOW_RUN_ID = os.getenv('MLFLOW_RUN_ID')  # di-set otomatis oleh mlflow run
 
 if DAGSHUB_TOKEN:
     dagshub.init(repo_owner='Escavora',
                  repo_name='Eksperimen_SML_Alief_Athallah',
                  mlflow=True)
     print("Tracking: DagsHub")
-elif MLFLOW_RUN_ID:
-    # Dijalankan via mlflow run — tracking URI sudah diset otomatis, jangan di-override
-    print(f"Tracking: {mlflow.get_tracking_uri()}")
 else:
-    # Dijalankan standalone di lokal
-    mlflow.set_tracking_uri("sqlite:///mlflow.db")
-    print("Tracking: SQLite lokal (mlflow.db)")
+    print(f"Tracking: {mlflow.get_tracking_uri()}")
+
+# Set experiment HANYA kalau tidak dijalankan via mlflow run
+if not MLFLOW_RUN_ID:
+    mlflow.set_experiment("stroke-prediction-ci")
 
 # Load dataset
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -50,10 +49,8 @@ X_train, X_test, y_train, y_test = train_test_split(
     X, y, test_size=0.2, random_state=42, stratify=y
 )
 
-# Training + logging
-mlflow.set_experiment("stroke-prediction-ci")
-
-with mlflow.start_run(run_name="RF-MLProject") as run:
+# Training + logging — resume run yang sudah dibuat mlflow run kalau ada
+with mlflow.start_run(run_id=MLFLOW_RUN_ID) as run:
 
     # Log params
     mlflow.log_param("n_estimators",      args.n_estimators)
@@ -105,11 +102,13 @@ with mlflow.start_run(run_name="RF-MLProject") as run:
     # Log model
     mlflow.sklearn.log_model(model, "model")
 
-    # Simpan run_id untuk Docker build di CI
+    # Simpan run_id untuk Docker build
+    run_id = run.info.run_id
     with open("run_id.txt", "w") as f:
-        f.write(run.info.run_id)
+        f.write(run_id)
 
-    print(f"\nRun ID   : {run.info.run_id}")
+    print(f"\nRun ID   : {run_id}")
     print(f"Accuracy : {accuracy_score(y_test, y_pred):.4f}")
     print(f"F1 Score : {f1_score(y_test, y_pred, zero_division=0):.4f}")
     print(f"ROC-AUC  : {roc_auc_score(y_test, y_prob):.4f}")
+    print("\nSemua metrics dan artefak berhasil di-log.")
