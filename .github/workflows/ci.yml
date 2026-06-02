@@ -46,14 +46,14 @@ jobs:
         run: |
           mlflow run MLProject/ --env-manager=local
 
-      # Get Run ID from run_id.txt
+      # Get Run ID
       - name: Get Run ID
         run: |
           RUN_ID=$(cat MLProject/run_id.txt)
           echo "RUN_ID=$RUN_ID" >> $GITHUB_ENV
           echo "Run ID: $RUN_ID"
 
-      # Upload Model Metadata
+      # Upload Metadata
       - name: Upload MLflow Metadata
         uses: actions/upload-artifact@v4
         with:
@@ -61,30 +61,25 @@ jobs:
           path: |
             mlflow.db
             MLProject/run_id.txt
+            MLProject/dataset_train.csv
+            MLProject/dataset_test.csv
 
-      # Upload Confusion Matrix
+      # Upload Confusion Matrix Images
       - name: Upload Confusion Matrix
         uses: actions/upload-artifact@v4
         with:
           name: confusion-matrix-artifact
           path: |
-            MLProject/confusion_matrix.png
+            MLProject/confusion_matrix_training.png
+            MLProject/confusion_matrix_testing.png
 
-      # Upload Feature Importance
+      # Upload Feature Importance CSV
       - name: Upload Feature Importance
         uses: actions/upload-artifact@v4
         with:
           name: feature-importance-artifact
           path: |
-            MLProject/feature_importance.png
-
-      # Upload MLruns Folder
-      - name: Upload MLflow Artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: mlflow-artifacts
-          path: |
-            MLProject/mlruns
+            MLProject/feature_importance.csv
 
       # Setup Docker Buildx
       - name: Setup Docker Buildx
@@ -97,7 +92,7 @@ jobs:
           username: ${{ secrets.DOCKER_HUB_USERNAME }}
           password: ${{ secrets.DOCKER_HUB_TOKEN }}
 
-      # Build Docker Image from MLflow Model
+      # Build Docker Image
       - name: Build Docker Image
         env:
           MLFLOW_BACKEND_STORE_URI: sqlite:///mlflow.db
@@ -119,7 +114,7 @@ jobs:
           docker push \
             ${{ secrets.DOCKER_HUB_USERNAME }}/stroke-prediction:latest
 
-      # Pipeline Finished
+      # Completed
       - name: Completed
         run: |
           echo "Pipeline complete!"
