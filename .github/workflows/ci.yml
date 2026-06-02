@@ -2,6 +2,7 @@ name: CI - Model Training (Advanced MLOps)
 
 on:
   workflow_dispatch:
+
   push:
     branches:
       - main
@@ -11,6 +12,8 @@ on:
 
 jobs:
   train-and-deploy:
+    if: "!contains(github.event.head_commit.message, '[skip ci]')"
+
     runs-on: ubuntu-latest
 
     permissions:
@@ -20,6 +23,8 @@ jobs:
       # Checkout Repository
       - name: Checkout Repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       # Setup Python
       - name: Setup Python 3.10
@@ -44,6 +49,7 @@ jobs:
         env:
           MLFLOW_BACKEND_STORE_URI: sqlite:///mlflow.db
           MLFLOW_ALLOW_FILE_STORE: "true"
+          DAGSHUB_TOKEN: ${{ secrets.DAGSHUB_TOKEN }}
         run: |
           mlflow run MLProject/ --env-manager=local
 
@@ -65,7 +71,7 @@ jobs:
             MLProject/dataset_train.csv
             MLProject/dataset_test.csv
 
-      # Upload Confusion Matrix Images
+      # Upload Confusion Matrix
       - name: Upload Confusion Matrix
         uses: actions/upload-artifact@v4
         with:
@@ -74,13 +80,32 @@ jobs:
             MLProject/confusion_matrix_training.png
             MLProject/confusion_matrix_testing.png
 
-      # Upload Feature Importance CSV
+      # Upload Feature Importance
       - name: Upload Feature Importance
         uses: actions/upload-artifact@v4
         with:
           name: feature-importance-artifact
           path: |
             MLProject/feature_importance.csv
+
+      # Commit generated files back to repository
+      - name: Commit Generated Files
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add MLProject/confusion_matrix_training.png
+          git add MLProject/confusion_matrix_testing.png
+          git add MLProject/feature_importance.csv
+          git add MLProject/dataset_train.csv
+          git add MLProject/dataset_test.csv
+          git add MLProject/run_id.txt
+
+          git status
+
+          git diff --cached --quiet || git commit -m "Auto-generate ML artifacts [skip ci]"
+
+          git push
 
       # Setup Docker Buildx
       - name: Setup Docker Buildx
