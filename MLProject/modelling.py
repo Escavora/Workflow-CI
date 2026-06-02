@@ -23,7 +23,7 @@ args = parser.parse_args()
 
 # Setup tracking
 DAGSHUB_TOKEN = os.getenv('DAGSHUB_TOKEN')
-MLFLOW_RUN_ID = os.getenv('MLFLOW_RUN_ID')  # di-set otomatis oleh mlflow run
+MLFLOW_RUN_ID = os.getenv('MLFLOW_RUN_ID')
 
 if DAGSHUB_TOKEN:
     dagshub.init(repo_owner='Escavora',
@@ -33,13 +33,9 @@ if DAGSHUB_TOKEN:
 else:
     print(f"Tracking: {mlflow.get_tracking_uri()}")
 
-# Set experiment HANYA kalau tidak dijalankan via mlflow run
-if not MLFLOW_RUN_ID:
-    mlflow.set_experiment("stroke-prediction-ci")
-
 # Load dataset
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-df = pd.read_csv(os.path.join(BASE_DIR, 'stroke_preprocessing', 'stroke_preprocessed.csv'))
+df = pd.read_csv(os.path.join(BASE_DIR, 'stroke_preprocessed.csv'))
 print(f"Dataset loaded: {df.shape}")
 
 # Split
@@ -49,15 +45,23 @@ X_train, X_test, y_train, y_test = train_test_split(
     X, y, test_size=0.2, random_state=42, stratify=y
 )
 
-# Training + logging — resume run yang sudah dibuat mlflow run kalau ada
+# Simpan dataset train dan test
+X_train_df = X_train.copy(); X_train_df['stroke'] = y_train.values
+X_test_df  = X_test.copy();  X_test_df['stroke']  = y_test.values
+X_train_df.to_csv(os.path.join(BASE_DIR, 'dataset_train.csv'), index=False)
+X_test_df.to_csv(os.path.join(BASE_DIR,  'dataset_test.csv'),  index=False)
+print("dataset_train.csv dan dataset_test.csv disimpan.")
+
+# Training
+if not MLFLOW_RUN_ID:
+    mlflow.set_experiment("stroke-prediction-ci")
+
 with mlflow.start_run(run_id=MLFLOW_RUN_ID) as run:
 
-    # Log params
     mlflow.log_param("n_estimators",      args.n_estimators)
     mlflow.log_param("max_depth",         args.max_depth)
     mlflow.log_param("min_samples_split", args.min_samples_split)
 
-    # Train
     model = RandomForestClassifier(
         n_estimators=args.n_estimators,
         max_depth=args.max_depth,
@@ -66,49 +70,60 @@ with mlflow.start_run(run_id=MLFLOW_RUN_ID) as run:
     )
     model.fit(X_train, y_train)
 
-    y_pred = model.predict(X_test)
-    y_prob = model.predict_proba(X_test)[:, 1]
+    # Evaluasi training set
+    y_train_pred = model.predict(X_train)
+    y_test_pred  = model.predict(X_test)
+    y_test_prob  = model.predict_proba(X_test)[:, 1]
 
     # Log metrics
-    mlflow.log_metric("accuracy",  accuracy_score(y_test, y_pred))
-    mlflow.log_metric("precision", precision_score(y_test, y_pred, zero_division=0))
-    mlflow.log_metric("recall",    recall_score(y_test, y_pred, zero_division=0))
-    mlflow.log_metric("f1_score",  f1_score(y_test, y_pred, zero_division=0))
-    mlflow.log_metric("roc_auc",   roc_auc_score(y_test, y_prob))
+    mlflow.log_metric("accuracy",  accuracy_score(y_test, y_test_pred))
+    mlflow.log_metric("precision", precision_score(y_test, y_test_pred, zero_division=0))
+    mlflow.log_metric("recall",    recall_score(y_test, y_test_pred, zero_division=0))
+    mlflow.log_metric("f1_score",  f1_score(y_test, y_test_pred, zero_division=0))
+    mlflow.log_metric("roc_auc",   roc_auc_score(y_test, y_test_prob))
 
-    # Artefak 1: Confusion Matrix
+    # Confusion Matrix — Training
+    cm_train = confusion_matrix(y_train, y_train_pred)
     fig, ax = plt.subplots(figsize=(6, 5))
-    ConfusionMatrixDisplay(confusion_matrix(y_test, y_pred),
-                           display_labels=['No Stroke', 'Stroke']).plot(ax=ax, colorbar=False)
-    plt.title("Confusion Matrix")
+    ConfusionMatrixDisplay(cm_train, display_labels=['No Stroke', 'Stroke']).plot(ax=ax, colorbar=False)
+    ax.set_title("Confusion Matrix — Training")
     plt.tight_layout()
-    plt.savefig("confusion_matrix.png", dpi=100)
+    cm_train_path = os.path.join(BASE_DIR, 'confusion_matrix_training.png')
+    plt.savefig(cm_train_path, dpi=100)
     plt.close()
-    mlflow.log_artifact("confusion_matrix.png")
+    mlflow.log_artifact(cm_train_path)
 
-    # Artefak 2: Feature Importance
-    importances = model.feature_importances_
-    idx = np.argsort(importances)[::-1]
-    features = X.columns.tolist()
-    plt.figure(figsize=(10, 5))
-    plt.bar(range(len(features)), importances[idx], color='steelblue', edgecolor='white')
-    plt.xticks(range(len(features)), [features[i] for i in idx], rotation=45, ha='right')
-    plt.title("Feature Importance")
+    # Confusion Matrix — Testing
+    cm_test = confusion_matrix(y_test, y_test_pred)
+    fig, ax = plt.subplots(figsize=(6, 5))
+    ConfusionMatrixDisplay(cm_test, display_labels=['No Stroke', 'Stroke']).plot(ax=ax, colorbar=False)
+    ax.set_title("Confusion Matrix — Testing")
     plt.tight_layout()
-    plt.savefig("feature_importance.png", dpi=100)
+    cm_test_path = os.path.join(BASE_DIR, 'confusion_matrix_testing.png')
+    plt.savefig(cm_test_path, dpi=100)
     plt.close()
-    mlflow.log_artifact("feature_importance.png")
+    mlflow.log_artifact(cm_test_path)
+
+    # Feature Importance — simpan sebagai CSV
+    features = X.columns.tolist()
+    fi_df = pd.DataFrame({
+        'feature': features,
+        'importance': model.feature_importances_
+    }).sort_values('importance', ascending=False)
+    fi_path = os.path.join(BASE_DIR, 'feature_importance.csv')
+    fi_df.to_csv(fi_path, index=False)
+    mlflow.log_artifact(fi_path)
+    print("feature_importance.csv disimpan.")
 
     # Log model
     mlflow.sklearn.log_model(model, "model")
 
-    # Simpan run_id untuk Docker build
+    # Simpan run_id
     run_id = run.info.run_id
-    with open("run_id.txt", "w") as f:
+    with open(os.path.join(BASE_DIR, 'run_id.txt'), "w") as f:
         f.write(run_id)
 
     print(f"\nRun ID   : {run_id}")
-    print(f"Accuracy : {accuracy_score(y_test, y_pred):.4f}")
-    print(f"F1 Score : {f1_score(y_test, y_pred, zero_division=0):.4f}")
-    print(f"ROC-AUC  : {roc_auc_score(y_test, y_prob):.4f}")
-    print("\nSemua metriks dan artefak berhasil di-log.")
+    print(f"Accuracy : {accuracy_score(y_test, y_test_pred):.4f}")
+    print(f"F1 Score : {f1_score(y_test, y_test_pred, zero_division=0):.4f}")
+    print(f"ROC-AUC  : {roc_auc_score(y_test, y_test_prob):.4f}")
